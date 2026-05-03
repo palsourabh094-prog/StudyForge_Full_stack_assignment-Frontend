@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — Notes</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page">
+    <div class="page-header">
+      <h1 class="page-title">Notes</h1>
+      <p class="page-sub">Capture ideas before they disappear.</p>
+    </div>
+
+    <div class="form-card">
+      <div class="form-group"><label class="form-label">Title *</label><input type="text" id="note-title" class="form-input" placeholder="e.g. Chapter 3 Summary" /><div class="form-error" id="note-title-error">Title is required.</div></div>
+      <div class="form-group"><label class="form-label">Content *</label><textarea id="note-content" class="form-textarea" rows="4" placeholder="Write your note here..."></textarea><div class="form-error" id="note-content-error">Content is required.</div></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div class="form-group" style="flex:1;margin:0"><label class="form-label">Tag</label><input type="text" id="note-tag" class="form-input" placeholder="e.g. Math, Physics" /></div>
+        <button class="btn btn-primary" id="save-note-btn">Save Note</button>
+      </div>
+    </div>
+
+    <div class="section-label">All Notes</div>
+    <div class="notes-grid" id="notes-grid"></div>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('notes.html');
+    const titleInput = document.getElementById('note-title');
+    const contentInput = document.getElementById('note-content');
+    const tagInput = document.getElementById('note-tag');
+    const saveBtn = document.getElementById('save-note-btn');
+    const grid = document.getElementById('notes-grid');
+    const titleError = document.getElementById('note-title-error');
+    const contentError = document.getElementById('note-content-error');
+
+    function renderNoteCard(note) {
+      const card = document.createElement('div'); card.className = 'note-card'; card.dataset.id = note.id;
+      const titleRow = document.createElement('div'); titleRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px';
+      const titleEl = document.createElement('div'); titleEl.className = 'note-title'; titleEl.textContent = note.title;
+      titleRow.appendChild(titleEl);
+      if (note.tag) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = note.tag; titleRow.appendChild(b); }
+
+      const preview = document.createElement('div'); preview.className = 'note-preview';
+      const c = note.content || ''; preview.textContent = c.length > 120 ? c.slice(0,120) + '…' : c;
+
+      const footer = document.createElement('div'); footer.className = 'note-footer';
+      const date = document.createElement('span'); date.className = 'note-date'; date.textContent = formatDate(note.created_at || note.date);
+      const actions = document.createElement('div'); actions.className = 'note-actions';
+      const editBtn = document.createElement('button'); editBtn.className = 'btn btn-ghost btn-sm'; editBtn.textContent = 'Edit';
+      const delBtn = document.createElement('button'); delBtn.className = 'btn btn-danger btn-sm'; delBtn.textContent = '✕';
+      actions.appendChild(editBtn); actions.appendChild(delBtn);
+      footer.appendChild(date); footer.appendChild(actions);
+
+      // Inline edit
+      const ef = document.createElement('div'); ef.className = 'inline-edit';
+      const eT = document.createElement('input'); eT.className = 'form-input'; eT.value = note.title;
+      const eC = document.createElement('textarea'); eC.className = 'form-textarea'; eC.rows = 3; eC.value = note.content;
+      const eTg = document.createElement('input'); eTg.className = 'form-input'; eTg.value = note.tag || ''; eTg.placeholder = 'Tag';
+      const eA = document.createElement('div'); eA.style.cssText = 'display:flex;gap:8px';
+      const saveE = document.createElement('button'); saveE.className = 'btn btn-primary btn-sm'; saveE.textContent = 'Save';
+      const canE = document.createElement('button'); canE.className = 'btn btn-secondary btn-sm'; canE.textContent = 'Cancel';
+      eA.appendChild(saveE); eA.appendChild(canE);
+      ef.appendChild(eT); ef.appendChild(eC); ef.appendChild(eTg); ef.appendChild(eA);
+
+      card.appendChild(titleRow); card.appendChild(preview); card.appendChild(footer); card.appendChild(ef);
+
+      editBtn.addEventListener('click', () => { const o = ef.classList.toggle('visible'); editBtn.textContent = o ? 'Cancel' : 'Edit'; });
+      canE.addEventListener('click', () => { ef.classList.remove('visible'); editBtn.textContent = 'Edit'; });
+      saveE.addEventListener('click', async () => {
+        const nt = eT.value.trim(), nc = eC.value.trim(), ng = eTg.value.trim();
+        if (!nt || !nc) { showToast('Title and content required.', 'error'); return; }
+        showLoading(saveE, 'Saving…');
+        try {
+          const u = await apiFetch(`/api/notes/${note.id}`, { method: 'PUT', body: JSON.stringify({ title: nt, content: nc, tag: ng }) });
+          titleEl.textContent = u.title || nt; preview.textContent = (u.content || nc).slice(0,120); ef.classList.remove('visible'); editBtn.textContent = 'Edit';
+          showToast('Note updated!', 'success');
+        } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(saveE); }
+      });
+      delBtn.addEventListener('click', async () => {
+        try { await apiFetch(`/api/notes/${note.id}`, { method: 'DELETE' }); card.classList.add('card-exit'); setTimeout(() => { card.remove(); if (!grid.children.length) renderEmptyState(grid, '📝', 'No notes yet', 'Write your first note above!'); }, 250); showToast('Note deleted.', 'info'); }
+        catch (err) { showToast(err.message, 'error'); }
+      });
+      return card;
+    }
+
+    async function loadNotes() {
+      renderSkeletons(grid, 4);
+      try {
+        const data = await apiFetch('/api/notes'); const notes = Array.isArray(data) ? data : (data.notes ?? []); grid.innerHTML = '';
+        if (!notes.length) { renderEmptyState(grid, '📝', 'No notes yet', 'Write your first note above!'); return; }
+        notes.forEach(n => grid.appendChild(renderNoteCard(n)));
+      } catch (err) { renderEmptyState(grid, '⚠️', 'Failed to load', err.message); }
+    }
+
+    async function saveNote() {
+      const title = titleInput.value.trim(), content = contentInput.value.trim(), tag = tagInput.value.trim();
+      titleError.classList.remove('visible'); contentError.classList.remove('visible');
+      let v = true; if (!title) { titleError.classList.add('visible'); v = false; } if (!content) { contentError.classList.add('visible'); v = false; } if (!v) return;
+      showLoading(saveBtn, 'Saving…');
+      try {
+        const note = await apiFetch('/api/notes', { method: 'POST', body: JSON.stringify({ title, content, tag }) });
+        if (grid.querySelector('.empty-state')) grid.innerHTML = '';
+        const card = renderNoteCard(note); grid.firstChild ? grid.insertBefore(card, grid.firstChild) : grid.appendChild(card);
+        titleInput.value = ''; contentInput.value = ''; tagInput.value = '';
+        showToast('Note saved!', 'success');
+      } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(saveBtn); }
+    }
+
+    saveBtn.addEventListener('click', saveNote);
+    loadNotes();
+  </script>
+</body>
+</html>

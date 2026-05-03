@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — Dashboard</title>
+  <meta name="description" content="StudyForge — AI-powered study companion. Generate courses, track habits, capture notes." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page">
+
+    <!-- Hero -->
+    <div class="dash-hero" style="display:block">
+      <div>
+        <h1 class="hero-greeting" id="greeting">Welcome back, Scholar</h1>
+        <p class="hero-sub">Here's your StudyForge overview — keep learning.</p>
+        <p class="hero-date" id="hero-date"></p>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="section-label">Your Progress</div>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num" id="stat-courses">—</div>
+        <div class="stat-lbl">Courses Generated</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-habits">—</div>
+        <div class="stat-lbl">Active Habits</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-notes">—</div>
+        <div class="stat-lbl">Notes Written</div>
+      </div>
+    </div>
+
+    <!-- Primary Action -->
+    <div class="section-label">Get Started</div>
+    <div class="feature-row">
+      <a href="generate.html" class="feature-card">
+        <span class="fc-icon">✨</span>
+        <div class="fc-title">AI Course Generator</div>
+        <div class="fc-desc">Describe any topic and get a structured, multi-module course outline powered by AI.</div>
+      </a>
+      <a href="habits.html" class="feature-card">
+        <span class="fc-icon">✅</span>
+        <div class="fc-title">Habit Tracker</div>
+        <div class="fc-desc">Build daily study streaks and stay consistent with your learning goals.</div>
+      </a>
+      <a href="notes.html" class="feature-card">
+        <span class="fc-icon">📝</span>
+        <div class="fc-title">Smart Notes</div>
+        <div class="fc-desc">Capture ideas, lecture summaries, and key insights. Tag and organize.</div>
+      </a>
+    </div>
+
+    <!-- Secondary Links -->
+    <div class="section-label">Explore</div>
+    <div class="feature-row">
+      <a href="courses.html" class="feature-card">
+        <span class="fc-icon">📚</span>
+        <div class="fc-title">Course Library</div>
+        <div class="fc-desc">Browse and revisit all your saved AI-generated courses.</div>
+      </a>
+      <a href="recent.html" class="feature-card">
+        <span class="fc-icon">🕐</span>
+        <div class="fc-title">Recent Activity</div>
+        <div class="fc-desc">See your latest courses, habits, and notes at a glance.</div>
+      </a>
+      <a href="generate.html" class="feature-card">
+        <span class="fc-icon">🚀</span>
+        <div class="fc-title">Start Learning</div>
+        <div class="fc-desc">Jump straight into generating a new course on any topic.</div>
+      </a>
+    </div>
+
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('index.html');
+
+    // Time-based greeting
+    const h = new Date().getHours();
+    let g = 'Late night grind 🌑';
+    if (h >= 5 && h < 12) g = 'Good morning, Scholar ☀️';
+    else if (h >= 12 && h < 17) g = 'Good afternoon, Scholar 🌤️';
+    else if (h >= 17 && h < 21) g = 'Good evening, Scholar 🌙';
+    document.getElementById('greeting').textContent = g;
+    document.getElementById('hero-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+    // Animated counter
+    function anim(id, target) {
+      const el = document.getElementById(id);
+      if (target === 0) { el.textContent = '0'; return; }
+      let c = 0; const s = Math.ceil(target / 20);
+      const t = setInterval(() => { c = Math.min(c + s, target); el.textContent = c; if (c >= target) clearInterval(t); }, 40);
+    }
+
+    // Load stats from API
+    async function loadStats() {
+      try {
+        const [habits, notes, courses] = await Promise.all([
+          apiFetch('/api/habits'), apiFetch('/api/notes'), apiFetch('/api/courses')
+        ]);
+        anim('stat-habits', Array.isArray(habits) ? habits.length : (habits.count ?? 0));
+        anim('stat-notes', Array.isArray(notes) ? notes.length : (notes.count ?? 0));
+        anim('stat-courses', Array.isArray(courses) ? courses.length : (courses.count ?? 0));
+      } catch {
+        ['stat-habits','stat-notes','stat-courses'].forEach(id => document.getElementById(id).textContent = '0');
+      }
+    }
+    loadStats();
+  </script>
+</body>
+</html>

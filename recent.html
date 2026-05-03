@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — Recent Activity</title>
+  <meta name="description" content="View your recent courses and activity on StudyForge." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page">
+
+    <div class="page-header">
+      <h1 class="page-title">Recent Activity 🕐</h1>
+      <p class="page-sub">Your latest generated courses and study progress.</p>
+    </div>
+
+    <!-- Recent Courses -->
+    <div class="section-label"><span>Recently Generated</span><a href="courses.html">View full library →</a></div>
+    <div id="recent-courses"></div>
+
+    <!-- Recent Habits Summary -->
+    <div class="section-label" style="margin-top:32px"><span>Today's Habits</span><a href="habits.html">Manage habits →</a></div>
+    <div id="recent-habits"></div>
+
+    <!-- Recent Notes -->
+    <div class="section-label" style="margin-top:32px"><span>Latest Notes</span><a href="notes.html">All notes →</a></div>
+    <div id="recent-notes"></div>
+
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('recent.html');
+
+    /* ── Recent Courses ── */
+    async function loadRecentCourses() {
+      const el = document.getElementById('recent-courses');
+      renderSkeletons(el, 3);
+      try {
+        const data = await apiFetch('/api/courses');
+        const courses = (Array.isArray(data) ? data : (data.courses ?? [])).slice(0, 5);
+        el.innerHTML = '';
+        if (courses.length === 0) {
+          renderEmptyState(el, '✨', 'No courses generated yet', 'Generate your first AI course to see it here.', 'Generate Now →', 'generate.html');
+          return;
+        }
+        const wrap = document.createElement('div'); wrap.className = 'recent-row';
+        courses.forEach(c => {
+          const row = document.createElement('div'); row.className = 'recent-item';
+          row.innerHTML = `<span class="recent-topic">${c.topic || 'Untitled'}</span><span class="recent-date">${formatDate(c.created_at || c.date)}</span>`;
+          const btn = document.createElement('a'); btn.href = 'courses.html'; btn.className = 'btn btn-ghost btn-sm'; btn.textContent = 'Open →';
+          row.appendChild(btn);
+          wrap.appendChild(row);
+        });
+        el.appendChild(wrap);
+      } catch (err) { renderEmptyState(el, '⚠️', 'Failed to load courses', err.message); }
+    }
+
+    /* ── Recent Habits ── */
+    async function loadRecentHabits() {
+      const el = document.getElementById('recent-habits');
+      renderSkeletons(el, 2);
+      try {
+        const data = await apiFetch('/api/habits');
+        const habits = (Array.isArray(data) ? data : (data.habits ?? [])).slice(0, 4);
+        el.innerHTML = '';
+        if (habits.length === 0) {
+          renderEmptyState(el, '✅', 'No habits tracked yet', 'Start building daily consistency.', 'Add a Habit →', 'habits.html');
+          return;
+        }
+        const wrap = document.createElement('div'); wrap.className = 'recent-row';
+        habits.forEach(h => {
+          const row = document.createElement('div'); row.className = 'recent-item';
+          const left = document.createElement('span'); left.className = 'recent-topic';
+          left.textContent = h.name;
+          const streak = document.createElement('span'); streak.className = 'badge badge-streak';
+          streak.textContent = `🔥 ${h.streak ?? 0}`;
+          const status = document.createElement('span');
+          if (h.completed_today) {
+            status.className = 'badge badge-success'; status.textContent = '✓ Done';
+          } else {
+            status.className = 'badge badge-muted'; status.textContent = 'Pending';
+          }
+          row.appendChild(left); row.appendChild(streak); row.appendChild(status);
+          wrap.appendChild(row);
+        });
+        el.appendChild(wrap);
+      } catch (err) { renderEmptyState(el, '⚠️', 'Failed to load habits', err.message); }
+    }
+
+    /* ── Recent Notes ── */
+    async function loadRecentNotes() {
+      const el = document.getElementById('recent-notes');
+      renderSkeletons(el, 2);
+      try {
+        const data = await apiFetch('/api/notes');
+        const notes = (Array.isArray(data) ? data : (data.notes ?? [])).slice(0, 4);
+        el.innerHTML = '';
+        if (notes.length === 0) {
+          renderEmptyState(el, '📝', 'No notes yet', 'Capture your first idea.', 'Write a Note →', 'notes.html');
+          return;
+        }
+        const wrap = document.createElement('div'); wrap.className = 'recent-row';
+        notes.forEach(n => {
+          const row = document.createElement('div'); row.className = 'recent-item';
+          const title = document.createElement('span'); title.className = 'recent-topic';
+          title.textContent = n.title || 'Untitled';
+          const date = document.createElement('span'); date.className = 'recent-date';
+          date.textContent = formatDate(n.created_at || n.date);
+          const btn = document.createElement('a'); btn.href = 'notes.html'; btn.className = 'btn btn-ghost btn-sm'; btn.textContent = 'Open →';
+          row.appendChild(title); row.appendChild(date); row.appendChild(btn);
+          wrap.appendChild(row);
+        });
+        el.appendChild(wrap);
+      } catch (err) { renderEmptyState(el, '⚠️', 'Failed to load notes', err.message); }
+    }
+
+    // Load all sections
+    loadRecentCourses();
+    loadRecentHabits();
+    loadRecentNotes();
+  </script>
+</body>
+</html>

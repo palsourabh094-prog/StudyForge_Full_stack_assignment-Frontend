@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — Saved Courses</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page">
+    <div class="page-header">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h1 class="page-title">Course Library 📚</h1>
+        <span class="badge" id="course-count">…</span>
+      </div>
+      <p class="page-sub">All your generated courses in one place.</p>
+    </div>
+    <div class="courses-grid" id="courses-grid"></div>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('courses.html');
+    const grid = document.getElementById('courses-grid');
+    const countEl = document.getElementById('course-count');
+
+    function parseCourse(raw) { if (!raw) return null; if (typeof raw === 'object') return raw; try { return JSON.parse(raw); } catch { return null; } }
+
+    function renderModules(modules, container) {
+      container.innerHTML = '';
+      if (!modules || !modules.length) { container.innerHTML = '<p style="font-size:13px;color:var(--text-muted)">No modules found.</p>'; return; }
+      modules.forEach((mod, i) => {
+        const item = document.createElement('div'); item.className = 'accordion-item'; item.style.marginBottom = '6px';
+        const header = document.createElement('div'); header.className = 'accordion-header';
+        header.innerHTML = `<div class="accordion-left"><span class="mod-pill">${i+1}</span><h3>${mod.title||mod.name||'Module '+(i+1)}</h3></div>`;
+        const chev = document.createElementNS('http://www.w3.org/2000/svg','svg');
+        chev.setAttribute('viewBox','0 0 24 24'); chev.setAttribute('fill','none');
+        chev.setAttribute('stroke','currentColor'); chev.setAttribute('stroke-width','2');
+        chev.className = 'accordion-chevron'; chev.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+        header.appendChild(chev);
+        const body = document.createElement('div'); body.className = 'accordion-body';
+        const inner = document.createElement('div'); inner.className = 'accordion-inner';
+        if (mod.description) inner.innerHTML += `<p>${mod.description}</p>`;
+        const subs = mod.subtopics || mod.topics || mod.sub_topics || [];
+        if (subs.length) {
+          const list = document.createElement('div'); list.className = 'subtopic-list';
+          subs.forEach(s => { const d = document.createElement('div'); d.className = 'subtopic-item'; d.textContent = typeof s === 'string' ? s : s.title || s.name || ''; list.appendChild(d); });
+          inner.appendChild(list);
+        }
+        body.appendChild(inner); item.appendChild(header); item.appendChild(body);
+        header.addEventListener('click', () => { const o = item.classList.contains('open'); item.classList.toggle('open', !o); body.style.maxHeight = o ? null : body.scrollHeight + 'px'; });
+        container.appendChild(item);
+      });
+    }
+
+    function renderCourseCard(course) {
+      const card = document.createElement('div'); card.className = 'course-card'; card.dataset.id = course.id;
+      const parsed = parseCourse(course.content);
+      const modules = parsed?.modules || parsed?.content?.modules || [];
+
+      const header = document.createElement('div'); header.className = 'course-header';
+      header.innerHTML = `<div class="course-topic">${course.topic || 'Untitled Course'}</div>`;
+      const meta = document.createElement('div'); meta.className = 'course-meta';
+      meta.innerHTML = `<span>Generated on ${formatDate(course.created_at || course.date)}</span>`;
+      if (modules.length) { const b = document.createElement('span'); b.className = 'badge badge-muted'; b.textContent = `${modules.length} modules`; meta.appendChild(b); }
+      header.appendChild(meta);
+
+      const footer = document.createElement('div'); footer.className = 'course-footer';
+      const viewBtn = document.createElement('button'); viewBtn.className = 'btn btn-ghost btn-sm'; viewBtn.textContent = 'View Course';
+      const delBtn = document.createElement('button'); delBtn.className = 'btn btn-danger btn-sm'; delBtn.textContent = 'Delete';
+      footer.appendChild(viewBtn); footer.appendChild(delBtn);
+
+      const expanded = document.createElement('div'); expanded.className = 'course-expanded';
+      if (parsed?.description) { const p = document.createElement('p'); p.style.cssText = 'font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6'; p.textContent = parsed.description; expanded.appendChild(p); }
+      renderModules(modules, expanded);
+
+      card.appendChild(header); card.appendChild(footer); card.appendChild(expanded);
+
+      viewBtn.addEventListener('click', () => { const v = expanded.classList.toggle('visible'); viewBtn.textContent = v ? 'Collapse' : 'View Course'; });
+      delBtn.addEventListener('click', async () => {
+        try {
+          await apiFetch(`/api/courses/${course.id}`, { method: 'DELETE' });
+          card.classList.add('card-exit');
+          setTimeout(() => { card.remove(); const r = grid.querySelectorAll('.course-card').length; countEl.textContent = `${r} courses`; if (!r) renderEmptyState(grid, '✨', 'Your course library is empty', 'Generate your first course to see it here.', 'Generate a Course →', 'generate.html'); }, 250);
+          showToast('Course deleted.', 'info');
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+      return card;
+    }
+
+    async function loadCourses() {
+      renderSkeletons(grid, 4);
+      try {
+        const data = await apiFetch('/api/courses'); const courses = Array.isArray(data) ? data : (data.courses ?? []); grid.innerHTML = '';
+        countEl.textContent = `${courses.length} courses`;
+        if (!courses.length) { renderEmptyState(grid, '✨', 'Your course library is empty', 'Generate your first course to see it here.', 'Generate a Course →', 'generate.html'); return; }
+        courses.forEach(c => grid.appendChild(renderCourseCard(c)));
+      } catch (err) { countEl.textContent = '—'; renderEmptyState(grid, '⚠️', 'Failed to load', err.message); }
+    }
+    loadCourses();
+  </script>
+</body>
+</html>

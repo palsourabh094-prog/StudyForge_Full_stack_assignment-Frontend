@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — Habits</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page">
+    <div class="page-header">
+      <h1 class="page-title">Habits</h1>
+      <p class="page-sub">Small consistent actions create extraordinary results.</p>
+    </div>
+
+    <!-- Add Habit -->
+    <div class="form-card">
+      <div class="habit-form-row">
+        <div class="form-group"><label class="form-label">Name *</label><input type="text" id="habit-name" class="form-input" placeholder="e.g. Study for 1 hour" autocomplete="off" /><div class="form-error" id="habit-name-error">Name must be at least 3 characters.</div></div>
+        <div class="form-group"><label class="form-label">Description</label><input type="text" id="habit-desc" class="form-input" placeholder="Why is this important?" autocomplete="off" /></div>
+        <div style="flex-shrink:0;padding-top:22px"><button class="btn btn-primary" id="add-habit-btn">Add Habit</button></div>
+      </div>
+    </div>
+
+    <!-- Streak bar -->
+    <div class="streak-bar" id="streak-bar" style="display:none"></div>
+
+    <div class="section-label">Your Habits</div>
+    <div id="habits-list"></div>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('habits.html');
+    const nameInput = document.getElementById('habit-name');
+    const descInput = document.getElementById('habit-desc');
+    const nameError = document.getElementById('habit-name-error');
+    const addBtn = document.getElementById('add-habit-btn');
+    const listEl = document.getElementById('habits-list');
+    const streakBar = document.getElementById('streak-bar');
+
+    function renderHabitCard(habit) {
+      const card = document.createElement('div'); card.className = 'habit-card'; card.dataset.id = habit.id;
+      const left = document.createElement('div'); left.className = 'habit-left';
+      left.innerHTML = `<div class="habit-name">${habit.name}</div><div class="habit-desc">${habit.description || 'No description'}</div>`;
+
+      const center = document.createElement('div'); center.className = 'habit-center';
+      const streak = document.createElement('span'); streak.className = 'badge badge-streak'; streak.id = `streak-${habit.id}`;
+      streak.textContent = `🔥 ${habit.streak ?? 0}`; center.appendChild(streak);
+
+      const right = document.createElement('div'); right.className = 'habit-right';
+      const doneBadge = document.createElement('span'); doneBadge.className = 'badge badge-success'; doneBadge.id = `done-badge-${habit.id}`;
+      doneBadge.textContent = '✓ Done'; doneBadge.style.display = habit.completed_today ? 'inline-flex' : 'none';
+
+      const doneBtn = document.createElement('button'); doneBtn.className = 'btn btn-success btn-sm'; doneBtn.id = `done-btn-${habit.id}`;
+      doneBtn.textContent = 'Mark Done';
+      if (habit.completed_today) { doneBtn.disabled = true; doneBtn.textContent = 'Done ✓'; }
+      doneBtn.addEventListener('click', () => markDone(habit.id));
+
+      const delBtn = document.createElement('button'); delBtn.className = 'btn btn-danger btn-sm'; delBtn.textContent = '✕';
+      delBtn.addEventListener('click', () => deleteHabit(habit.id));
+
+      right.appendChild(doneBadge); right.appendChild(doneBtn); right.appendChild(delBtn);
+      card.appendChild(left); card.appendChild(center); card.appendChild(right);
+      return card;
+    }
+
+    function updateStreakBar(habits) {
+      const maxStreak = Math.max(0, ...habits.map(h => h.streak ?? 0));
+      if (maxStreak > 0) { streakBar.style.display = 'block'; streakBar.textContent = `Your longest streak: ${maxStreak} days 🔥`; }
+      else { streakBar.style.display = 'none'; }
+    }
+
+    async function loadHabits() {
+      renderSkeletons(listEl, 3);
+      try {
+        const data = await apiFetch('/api/habits');
+        listEl.innerHTML = '';
+        const habits = Array.isArray(data) ? data : (data.habits ?? []);
+        updateStreakBar(habits);
+        if (habits.length === 0) { renderEmptyState(listEl, '💪', 'No habits yet', 'Add your first habit above to start building streaks.'); return; }
+        habits.forEach(h => listEl.appendChild(renderHabitCard(h)));
+      } catch (err) { renderEmptyState(listEl, '⚠️', 'Failed to load', err.message); }
+    }
+
+    async function addHabit() {
+      const name = nameInput.value.trim(); const desc = descInput.value.trim();
+      nameError.classList.remove('visible');
+      if (name.length < 3) { nameError.classList.add('visible'); nameInput.focus(); return; }
+      showLoading(addBtn, 'Adding…');
+      try {
+        const habit = await apiFetch('/api/habits', { method: 'POST', body: JSON.stringify({ name, description: desc }) });
+        if (listEl.querySelector('.empty-state')) listEl.innerHTML = '';
+        const card = renderHabitCard(habit);
+        listEl.firstChild ? listEl.insertBefore(card, listEl.firstChild) : listEl.appendChild(card);
+        nameInput.value = ''; descInput.value = '';
+        showToast('Habit added!', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+      finally { hideLoading(addBtn); }
+    }
+
+    async function markDone(id) {
+      const btn = document.getElementById(`done-btn-${id}`); showLoading(btn, '…');
+      try {
+        const u = await apiFetch(`/api/habits/${id}`, { method: 'PUT' });
+        document.getElementById(`streak-${id}`).textContent = `🔥 ${u.streak ?? 0}`;
+        const b = document.getElementById(`done-badge-${id}`); if (b) b.style.display = 'inline-flex';
+        btn.disabled = true; btn.innerHTML = 'Done ✓';
+        showToast('Habit marked complete!', 'success');
+      } catch (err) { showToast(err.message, 'error'); hideLoading(btn); }
+    }
+
+    async function deleteHabit(id) {
+      const card = document.querySelector(`.habit-card[data-id="${id}"]`);
+      try {
+        await apiFetch(`/api/habits/${id}`, { method: 'DELETE' });
+        if (card) { card.classList.add('card-exit'); setTimeout(() => { card.remove(); if (!listEl.children.length) renderEmptyState(listEl, '💪', 'No habits yet', 'Add your first habit above!'); }, 250); }
+        showToast('Habit deleted.', 'info');
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    addBtn.addEventListener('click', addHabit);
+    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') addHabit(); });
+    loadHabits();
+  </script>
+</body>
+</html>

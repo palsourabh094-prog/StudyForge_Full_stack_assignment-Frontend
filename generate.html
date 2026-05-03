@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyForge — AI Course Generator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="page-wide">
+
+    <!-- Hero input area -->
+    <div class="gen-hero">
+      <h1 class="gen-title">What do you want to learn?</h1>
+      <p class="gen-sub">Enter any topic and StudyForge will generate a complete course outline for you.</p>
+    </div>
+
+    <div class="gen-form">
+      <div class="form-group">
+        <input type="text" id="gen-topic" class="form-input form-input-lg"
+               placeholder="e.g. Machine Learning, Ancient Rome, Guitar basics..." />
+        <div class="form-error" id="gen-topic-error">Please enter a topic.</div>
+      </div>
+
+      <button class="context-toggle" id="ctx-toggle">+ Add context</button>
+      <div class="context-area" id="ctx-area">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Extra context (optional)</label>
+          <textarea id="gen-context" class="form-textarea" rows="3"
+                    placeholder="Paste your syllabus, notes, or any additional info..."></textarea>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-xl btn-block" id="gen-btn" style="margin-top:16px">
+        ✨ Generate Course
+      </button>
+      <p class="gen-powered">Powered by Google Gemini · Usually takes 3-5 seconds</p>
+    </div>
+
+    <!-- Result -->
+    <div class="result-section" id="result-section">
+      <div class="result-head">
+        <h2 id="course-title"></h2>
+        <p id="course-desc"></p>
+        <div class="result-actions">
+          <button class="btn btn-primary" id="save-course-btn">Save Course</button>
+          <button class="btn btn-secondary" id="reset-btn">Regenerate</button>
+          <span class="badge" id="mod-count"></span>
+          <span class="save-success" id="save-ok">✓ Course saved to your library · <a href="courses.html" style="color:var(--accent)">View in Courses →</a></span>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Modules</div>
+      <div id="modules-list"></div>
+    </div>
+
+  </main>
+  <script src="app.js"></script>
+  <script>
+    initNavbar('generate.html');
+
+    const topicInput = document.getElementById('gen-topic');
+    const ctxToggle = document.getElementById('ctx-toggle');
+    const ctxArea = document.getElementById('ctx-area');
+    const contextInput = document.getElementById('gen-context');
+    const genBtn = document.getElementById('gen-btn');
+    const topicError = document.getElementById('gen-topic-error');
+    const resultSec = document.getElementById('result-section');
+    const courseTitle = document.getElementById('course-title');
+    const courseDesc = document.getElementById('course-desc');
+    const modulesList = document.getElementById('modules-list');
+    const saveBtn = document.getElementById('save-course-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const modCount = document.getElementById('mod-count');
+    const saveOk = document.getElementById('save-ok');
+    let generatedCourse = null;
+
+    // Context toggle
+    ctxToggle.addEventListener('click', () => {
+      const v = ctxArea.classList.toggle('visible');
+      ctxToggle.textContent = v ? '− Hide context' : '+ Add context';
+    });
+
+    // Render module accordion
+    function renderModule(mod, i, openFirst) {
+      const item = document.createElement('div');
+      item.className = 'accordion-item' + (openFirst && i === 0 ? ' open' : '');
+      const header = document.createElement('div');
+      header.className = 'accordion-header';
+      header.innerHTML = `<div class="accordion-left"><span class="mod-pill">${i+1}</span><h3>${mod.title||mod.name||'Module '+(i+1)}</h3></div>`;
+      const chev = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      chev.setAttribute('viewBox','0 0 24 24'); chev.setAttribute('fill','none');
+      chev.setAttribute('stroke','currentColor'); chev.setAttribute('stroke-width','2');
+      chev.className = 'accordion-chevron';
+      chev.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
+      header.appendChild(chev);
+
+      const body = document.createElement('div');
+      body.className = 'accordion-body';
+      if (openFirst && i === 0) body.style.maxHeight = '500px';
+      const inner = document.createElement('div');
+      inner.className = 'accordion-inner';
+      if (mod.description) inner.innerHTML += `<p>${mod.description}</p>`;
+      const subs = mod.subtopics || mod.topics || mod.sub_topics || [];
+      if (subs.length) {
+        const list = document.createElement('div'); list.className = 'subtopic-list';
+        subs.forEach(s => {
+          const d = document.createElement('div'); d.className = 'subtopic-item';
+          d.textContent = typeof s === 'string' ? s : s.title || s.name || '';
+          list.appendChild(d);
+        });
+        inner.appendChild(list);
+      }
+      body.appendChild(inner);
+      item.appendChild(header); item.appendChild(body);
+
+      header.addEventListener('click', () => {
+        const open = item.classList.contains('open');
+        document.querySelectorAll('.accordion-item.open').forEach(el => { el.classList.remove('open'); el.querySelector('.accordion-body').style.maxHeight = null; });
+        if (!open) { item.classList.add('open'); body.style.maxHeight = body.scrollHeight + 'px'; }
+      });
+      return item;
+    }
+
+    // Generate
+    async function generateCourse() {
+      const topic = topicInput.value.trim();
+      const context = contextInput ? contextInput.value.trim() : '';
+      topicError.classList.remove('visible');
+      if (!topic) { topicError.classList.add('visible'); topicInput.focus(); return; }
+      showLoading(genBtn, 'Generating···');
+      resultSec.classList.remove('visible'); modulesList.innerHTML = ''; generatedCourse = null;
+      saveOk.classList.remove('visible');
+      try {
+        const data = await apiFetch('/api/generate', { method: 'POST', body: JSON.stringify({ topic, context }) });
+        generatedCourse = data;
+        courseTitle.textContent = data.title || `Course: ${topic}`;
+        courseDesc.textContent = data.description || '';
+        const modules = data.modules || data.content?.modules || [];
+        modCount.textContent = `${modules.length} Modules`;
+        modules.forEach((m, i) => modulesList.appendChild(renderModule(m, i, true)));
+        resultSec.classList.add('visible');
+        resultSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) { showToast(err.message || 'Generation failed.', 'error'); }
+      finally { hideLoading(genBtn); }
+    }
+
+    // Save
+    async function saveCourse() {
+      if (!generatedCourse) return;
+      showLoading(saveBtn, 'Saving…');
+      try {
+        await apiFetch('/api/courses', { method: 'POST', body: JSON.stringify({ topic: topicInput.value.trim() || generatedCourse.title || 'Untitled', content: JSON.stringify(generatedCourse) }) });
+        saveOk.classList.add('visible');
+        saveBtn.disabled = true; saveBtn.textContent = '✓ Saved';
+        showToast('Course saved to your library!', 'success');
+      } catch (err) { showToast(err.message, 'error'); hideLoading(saveBtn); }
+    }
+
+    // Reset
+    resetBtn.addEventListener('click', () => { resultSec.classList.remove('visible'); topicInput.value = ''; if(contextInput) contextInput.value = ''; topicInput.focus(); window.scrollTo({top:0,behavior:'smooth'}); saveBtn.disabled = false; saveBtn.textContent = 'Save Course'; saveOk.classList.remove('visible'); });
+    genBtn.addEventListener('click', generateCourse);
+    saveBtn.addEventListener('click', saveCourse);
+    topicInput.addEventListener('keydown', e => { if (e.key === 'Enter') generateCourse(); });
+  </script>
+</body>
+</html>
